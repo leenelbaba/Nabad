@@ -4,7 +4,30 @@
 import { render, screen } from "@testing-library/react";
 import HomePage from "../pages/index";
 
+// The page reads the URL query from the router. Each test can change mockQuery.
+let mockQuery = {};
+jest.mock("next/router", () => ({
+  useRouter: () => ({ query: mockQuery }),
+}));
+
 describe("Landing Page", () => {
+  beforeEach(() => {
+    mockQuery = {};
+  });
+
+  test("shows a message after the account was deleted", () => {
+    mockQuery = { deleted: "1" };
+    render(<HomePage />);
+
+    expect(screen.getByText("Your account has been deleted.")).toBeInTheDocument();
+  });
+
+  test("does not show the deleted message on a normal visit", () => {
+    render(<HomePage />);
+
+    expect(screen.queryByText("Your account has been deleted.")).not.toBeInTheDocument();
+  });
+
   test("shows the headline", () => {
     render(<HomePage />);
 
