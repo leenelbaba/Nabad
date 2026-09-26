@@ -2,3 +2,8 @@
 node_modules/
 .next/
 .swc/
+
+# Environment files hold secrets (passwords, API keys). Only .env.example files are committed.
+.env
+.env.local
+**/.env
