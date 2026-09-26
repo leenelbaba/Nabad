@@ -1,6 +1,14 @@
 import { useEffect, useState } from "react";
-import Logo from "../components/Logo";
-import { getMyProfile, updateMyProfile } from "../lib/profileApi";
+import ProfileHeader from "../components/ProfileHeader";
+import { useActiveProfile } from "../context/ActiveProfileContext";
+import {
+  getMyProfile,
+  updateMyProfile,
+  addLinkedProfile,
+  RELATIONSHIPS,
+  MAX_LINKED_PROFILES,
+} from "../lib/profileApi";
+import { todayString, calculateAge } from "../lib/dates";
 
 const TEAL = "#0f766e";
 
@@ -17,15 +25,6 @@ const buttonStyle = {
 const outlineButtonStyle = { ...buttonStyle, background: "white", color: TEAL };
 
 const inputStyle = { width: "100%", padding: 8, margin: "6px 0 4px", boxSizing: "border-box" };
-
-// Today's date as "YYYY-MM-DD" in the user's local time zone.
-// (toISOString() uses UTC, which can be a different day around midnight in Lebanon.)
-function todayString() {
-  const now = new Date();
-  const month = String(now.getMonth() + 1).padStart(2, "0");
-  const day = String(now.getDate()).padStart(2, "0");
-  return `${now.getFullYear()}-${month}-${day}`;
-}
 
 // Checks the form and returns an object of error messages, e.g. { phone: "..." }.
 // An empty object means everything is valid.
@@ -52,6 +51,29 @@ function validate(form) {
   return errors;
 }
 
+// Checks the "Add dependent" form. Every field is required.
+function validateDependent(form) {
+  const errors = {};
+
+  if (!form.fullName.trim()) {
+    errors.fullName = "Full name is required";
+  }
+
+  if (!form.dateOfBirth) {
+    errors.dateOfBirth = "Date of birth is required";
+  } else if (form.dateOfBirth > todayString()) {
+    errors.dateOfBirth = "Date of birth cannot be in the future";
+  }
+
+  if (!form.relationship) {
+    errors.relationship = "Relationship is required";
+  }
+
+  return errors;
+}
+
+const EMPTY_DEPENDENT = { fullName: "", dateOfBirth: "", relationship: "" };
+
 export default function ProfilePage() {
   const [profile, setProfile] = useState(null);
   const [isEditing, setIsEditing] = useState(false);
@@ -61,6 +83,15 @@ export default function ProfilePage() {
   const [saving, setSaving] = useState(false);
   const [loadError, setLoadError] = useState("");
   const [saveError, setSaveError] = useState("");
+
+  // Linked profiles (dependents) come from the shared ActiveProfile context.
+  const { activeProfile, linkedProfiles, refreshProfiles } = useActiveProfile();
+  const [isAddingDependent, setIsAddingDependent] = useState(false);
+  const [dependentForm, setDependentForm] = useState(EMPTY_DEPENDENT);
+  const [dependentErrors, setDependentErrors] = useState({});
+  const [dependentError, setDependentError] = useState("");
+  const [dependentMessage, setDependentMessage] = useState("");
+  const reachedLimit = linkedProfiles.length >= MAX_LINKED_PROFILES;
 
   // Load the profile once. .catch() makes sure a failed load shows a message
   // instead of "Loading..." forever.
@@ -101,6 +132,8 @@ export default function ProfilePage() {
     try {
       const updated = await updateMyProfile({ ...form, fullName: form.fullName.trim() });
       setProfile(updated);
+      // Update the profile switcher so it shows the new name too.
+      refreshProfiles();
       setIsEditing(false);
       setMessage("Profile saved successfully.");
     } catch {
@@ -111,17 +144,55 @@ export default function ProfilePage() {
     }
   }
 
+  function startAddingDependent() {
+    setDependentForm(EMPTY_DEPENDENT);
+    setDependentErrors({});
+    setDependentError("");
+    setDependentMessage("");
+    setIsAddingDependent(true);
+  }
+
+  function updateDependentField(name, value) {
+    setDependentForm({ ...dependentForm, [name]: value });
+  }
+
+  async function handleAddDependent(e) {
+    e.preventDefault();
+    const newErrors = validateDependent(dependentForm);
+    setDependentErrors(newErrors);
+    if (Object.keys(newErrors).length > 0) {
+      return;
+    }
+    setDependentError("");
+    try {
+      await addLinkedProfile({ ...dependentForm, fullName: dependentForm.fullName.trim() });
+      await refreshProfiles();
+      setIsAddingDependent(false);
+      setDependentMessage("Dependent added.");
+    } catch (err) {
+      // The API explains what went wrong, e.g. "You can link up to 10 dependents".
+      setDependentError(err.message);
+    }
+  }
+
   return (
     <main style={{ maxWidth: 600, margin: "0 auto", padding: "20px 16px", fontFamily: "sans-serif", color: "#1f2937" }}>
-      <nav style={{ marginBottom: 32 }}>
-        <Logo />
-      </nav>
+      <ProfileHeader />
+      {/* The details on this page are always the account owner's, so explain that
+          while acting as a dependent (the banner above names who is active). */}
+      {activeProfile && !activeProfile.isSelf && (
+        <p style={{ color: "#6b7280", marginTop: -20 }}>
+          You're managing {activeProfile.fullName}'s care. Account settings below belong to you.
+        </p>
+      )}
       <h1>My Profile</h1>
 
       {loadError && <p style={{ color: "crimson" }}>{loadError}</p>}
       {!profile && !loadError && <p>Loading...</p>}
 
       {message && <p style={{ color: TEAL, fontWeight: "bold" }}>{message}</p>}
+
+      {profile && <h2 style={{ color: TEAL }}>Account owner</h2>}
 
       {profile && !isEditing && (
         <div>
@@ -178,6 +249,76 @@ export default function ProfilePage() {
           </div>
         </form>
       )}
+
+      <section style={{ marginTop: 40 }}>
+        <h2 style={{ color: TEAL }}>Linked profiles</h2>
+        {dependentMessage && <p style={{ color: TEAL, fontWeight: "bold" }}>{dependentMessage}</p>}
+
+        {linkedProfiles.length === 0 && <p style={{ color: "#6b7280" }}>No linked profiles yet.</p>}
+        {linkedProfiles.length > 0 && (
+          <ul style={{ paddingLeft: 20 }}>
+            {linkedProfiles.map((dependent) => (
+              <li key={dependent.id} style={{ marginBottom: 6 }}>
+                <strong>{dependent.fullName}</strong>, {dependent.relationship}, age {calculateAge(dependent.dateOfBirth)}
+              </li>
+            ))}
+          </ul>
+        )}
+
+        {reachedLimit && (
+          <p style={{ color: "#6b7280" }}>You can link up to {MAX_LINKED_PROFILES} dependents.</p>
+        )}
+
+        {!isAddingDependent && (
+          <button type="button" onClick={startAddingDependent} disabled={reachedLimit} style={buttonStyle}>
+            Add dependent
+          </button>
+        )}
+
+        {isAddingDependent && (
+          <form onSubmit={handleAddDependent} noValidate>
+            <label htmlFor="dependentName">Full name</label>
+            <input
+              id="dependentName"
+              value={dependentForm.fullName}
+              onChange={(e) => updateDependentField("fullName", e.target.value)}
+              style={inputStyle}
+            />
+            {dependentErrors.fullName && <p style={{ color: "crimson", marginTop: 0 }}>{dependentErrors.fullName}</p>}
+
+            <label htmlFor="dependentDateOfBirth">Date of birth</label>
+            <input
+              id="dependentDateOfBirth"
+              type="date"
+              max={todayString()}
+              value={dependentForm.dateOfBirth}
+              onChange={(e) => updateDependentField("dateOfBirth", e.target.value)}
+              style={inputStyle}
+            />
+            {dependentErrors.dateOfBirth && <p style={{ color: "crimson", marginTop: 0 }}>{dependentErrors.dateOfBirth}</p>}
+
+            <label htmlFor="dependentRelationship">Relationship</label>
+            <select
+              id="dependentRelationship"
+              value={dependentForm.relationship}
+              onChange={(e) => updateDependentField("relationship", e.target.value)}
+              style={inputStyle}
+            >
+              <option value="">Choose...</option>
+              {RELATIONSHIPS.map((relationship) => (
+                <option key={relationship} value={relationship}>{relationship}</option>
+              ))}
+            </select>
+            {dependentErrors.relationship && <p style={{ color: "crimson", marginTop: 0 }}>{dependentErrors.relationship}</p>}
+
+            {dependentError && <p style={{ color: "crimson" }}>{dependentError}</p>}
+            <div style={{ display: "flex", gap: 12, marginTop: 16 }}>
+              <button type="submit" style={buttonStyle}>Save dependent</button>
+              <button type="button" onClick={() => setIsAddingDependent(false)} style={outlineButtonStyle}>Cancel</button>
+            </div>
+          </form>
+        )}
+      </section>
 
       {/* PLACEHOLDER: Emergency contact section, being built by a teammate. Replace this box. */}
       <section style={{ border: `2px dashed ${TEAL}`, borderRadius: 12, padding: 20, marginTop: 40 }}>

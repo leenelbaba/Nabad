@@ -3,7 +3,17 @@
 
 import { render, screen } from "@testing-library/react";
 import DashboardPage from "../pages/dashboard";
-import { getMyProfile, updateMyProfile } from "../lib/profileApi";
+import { ActiveProfileProvider } from "../context/ActiveProfileContext";
+import { getMyProfile, updateMyProfile, addLinkedProfile } from "../lib/profileApi";
+
+// The dashboard reads the active profile from the provider, just like in _app.js.
+function renderDashboard() {
+  render(
+    <ActiveProfileProvider>
+      <DashboardPage />
+    </ActiveProfileProvider>
+  );
+}
 
 describe("Dashboard Page", () => {
   // Start every test with empty storage, so the demo user is seeded fresh.
@@ -12,7 +22,7 @@ describe("Dashboard Page", () => {
   });
 
   test("welcomes the demo user by name", async () => {
-    render(<DashboardPage />);
+    renderDashboard();
 
     expect(
       await screen.findByText("Welcome, Demo User")
@@ -23,7 +33,7 @@ describe("Dashboard Page", () => {
     const profile = await getMyProfile();
     await updateMyProfile({ ...profile, fullName: "Layla Haddad" });
 
-    render(<DashboardPage />);
+    renderDashboard();
 
     expect(
       await screen.findByText("Welcome, Layla Haddad")
@@ -31,7 +41,7 @@ describe("Dashboard Page", () => {
   });
 
   test("loading ends once the profile is shown", async () => {
-    render(<DashboardPage />);
+    renderDashboard();
     expect(screen.getByText("Loading...")).toBeInTheDocument();
 
     await screen.findByText("Welcome, Demo User");
@@ -45,7 +55,7 @@ describe("Dashboard Page", () => {
   ])("loading ends with an error message when data has %s", async (_, storedValue) => {
     localStorage.setItem("nabad-profiles", storedValue);
 
-    render(<DashboardPage />);
+    renderDashboard();
 
     expect(
       await screen.findByText("Could not load your profile. Please refresh the page.")
@@ -53,8 +63,19 @@ describe("Dashboard Page", () => {
     expect(screen.queryByText("Loading...")).not.toBeInTheDocument();
   });
 
+  test("welcomes the active dependent when one is selected", async () => {
+    const child = await addLinkedProfile({ fullName: "Sami", dateOfBirth: "2015-03-10", relationship: "child" });
+    localStorage.setItem("nabad-active-profile-id", child.id);
+
+    renderDashboard();
+
+    expect(await screen.findByText("Welcome, Sami")).toBeInTheDocument();
+    // The "managing ... care" note belongs to /profile only.
+    expect(screen.queryByText(/You're managing/)).not.toBeInTheDocument();
+  });
+
   test("My Profile link points to /profile", async () => {
-    render(<DashboardPage />);
+    renderDashboard();
     await screen.findByText("Welcome, Demo User");
 
     expect(

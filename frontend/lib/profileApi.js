@@ -3,9 +3,14 @@
 // Every function is async (returns a Promise) like a real API call, so later we can
 // replace the insides with real fetch() calls without changing any page.
 
+import { todayString } from "./dates";
+
 const STORAGE_KEY = "nabad-profiles";
 
-const RELATIONSHIPS = ["child", "parent", "spouse", "other"];
+export const RELATIONSHIPS = ["child", "parent", "spouse", "other"];
+
+// The most dependents one account can link.
+export const MAX_LINKED_PROFILES = 10;
 
 // The account owner's profile, used when nothing is stored yet.
 const DEMO_SELF_PROFILE = {
@@ -78,17 +83,30 @@ export async function addLinkedProfile(data) {
   if (!data.fullName || !data.fullName.trim()) {
     throw new Error("Full name is required");
   }
+  if (!data.dateOfBirth) {
+    throw new Error("Date of birth is required");
+  }
+  // Dates in "YYYY-MM-DD" format can be compared as plain strings.
+  if (data.dateOfBirth > todayString()) {
+    throw new Error("Date of birth cannot be in the future");
+  }
   if (!RELATIONSHIPS.includes(data.relationship)) {
     throw new Error("Relationship must be child, parent, spouse, or other");
   }
+  const profiles = loadProfiles();
+  if (profiles.filter((profile) => !profile.isSelf).length >= MAX_LINKED_PROFILES) {
+    throw new Error(`You can link up to ${MAX_LINKED_PROFILES} dependents`);
+  }
   const newProfile = {
-    id: "p-" + Date.now(),
+    // Date.now() alone can repeat if two profiles are added in the same millisecond,
+    // so a few random letters are added to keep every id unique.
+    id: "p-" + Date.now() + "-" + Math.random().toString(36).slice(2, 7),
     fullName: data.fullName.trim(),
-    dateOfBirth: data.dateOfBirth || "",
+    dateOfBirth: data.dateOfBirth,
     relationship: data.relationship,
     isSelf: false,
   };
-  saveProfiles([...loadProfiles(), newProfile]);
+  saveProfiles([...profiles, newProfile]);
   return newProfile;
 }
 

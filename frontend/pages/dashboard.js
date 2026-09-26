@@ -1,6 +1,5 @@
-import { useEffect, useState } from "react";
-import Logo from "../components/Logo";
-import { getMyProfile } from "../lib/profileApi";
+import ProfileHeader from "../components/ProfileHeader";
+import { useActiveProfile } from "../context/ActiveProfileContext";
 
 const TEAL = "#0f766e";
 
@@ -15,25 +14,15 @@ const buttonStyle = {
 };
 
 export default function DashboardPage() {
-  const [profile, setProfile] = useState(null);
-  const [error, setError] = useState("");
-
-  // Load the user's profile once, when the page first appears.
-  // .catch() makes sure a failed load shows a message instead of "Loading..." forever.
-  useEffect(() => {
-    getMyProfile()
-      .then(setProfile)
-      .catch(() => setError("Could not load your profile. Please refresh the page."));
-  }, []);
+  // The active profile (you or a dependent) is loaded by ActiveProfileProvider in _app.js.
+  const { activeProfile, error, loading } = useActiveProfile();
 
   return (
     <main style={{ maxWidth: 700, margin: "0 auto", padding: "20px 16px", fontFamily: "sans-serif", color: "#1f2937" }}>
-      <nav style={{ marginBottom: 40 }}>
-        <Logo />
-      </nav>
-      {profile && <h1>Welcome, {profile.fullName}</h1>}
+      <ProfileHeader />
+      {activeProfile && <h1>Welcome, {activeProfile.fullName}</h1>}
       {error && <p style={{ color: "crimson" }}>{error}</p>}
-      {!profile && !error && <p>Loading...</p>}
+      {loading && <p>Loading...</p>}
       <a href="/profile" style={buttonStyle}>My Profile</a>
     </main>
   );
