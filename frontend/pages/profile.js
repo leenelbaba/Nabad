@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/router";
+import Head from "next/head";
 import ProfileHeader from "../components/ProfileHeader";
 import Dialog from "../components/Dialog";
 import { useActiveProfile } from "../context/ActiveProfileContext";
@@ -228,6 +229,10 @@ export default function ProfilePage() {
 
   async function handleDeleteAccount(e) {
     e.preventDefault();
+    // The button is disabled until "DELETE" is typed, but check here too in case the form is submitted another way.
+    if (deleteConfirmText !== "DELETE") {
+      return;
+    }
     setDeleteError("");
     try {
       await deleteAccount(deletePassword);
@@ -242,6 +247,9 @@ export default function ProfilePage() {
 
   return (
     <main style={{ maxWidth: 600, margin: "0 auto", padding: "20px 16px", fontFamily: "sans-serif", color: "#1f2937" }}>
+      <Head>
+        <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+      </Head>
       <ProfileHeader />
       {/* The details on this page are always the account owner's, so explain that
           while acting as a dependent (the banner above names who is active). */}
@@ -306,7 +314,7 @@ export default function ProfilePage() {
           {errors.dateOfBirth && <p style={{ color: "crimson", marginTop: 0 }}>{errors.dateOfBirth}</p>}
 
           {saveError && <p style={{ color: "crimson" }}>{saveError}</p>}
-          <div style={{ display: "flex", gap: 12, marginTop: 16 }}>
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 12, marginTop: 16 }}>
             <button type="submit" disabled={saving} style={buttonStyle}>
               {saving ? "Saving..." : "Save"}
             </button>
@@ -386,7 +394,7 @@ export default function ProfilePage() {
             {dependentErrors.relationship && <p style={{ color: "crimson", marginTop: 0 }}>{dependentErrors.relationship}</p>}
 
             {dependentError && <p style={{ color: "crimson" }}>{dependentError}</p>}
-            <div style={{ display: "flex", gap: 12, marginTop: 16 }}>
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 12, marginTop: 16 }}>
               <button type="submit" style={buttonStyle}>Save dependent</button>
               <button type="button" onClick={() => setIsAddingDependent(false)} style={outlineButtonStyle}>Cancel</button>
             </div>
@@ -412,7 +420,7 @@ export default function ProfilePage() {
             Remove {profileToRemove.fullName}'s profile? This deletes all of their data and cannot be undone.
           </p>
           {removeError && <p style={{ color: "crimson" }}>{removeError}</p>}
-          <div style={{ display: "flex", gap: 12, marginTop: 16 }}>
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 12, marginTop: 16 }}>
             <button type="button" onClick={handleRemove} style={dangerButtonStyle}>Remove</button>
             <button type="button" onClick={() => setProfileToRemove(null)} style={outlineButtonStyle}>Cancel</button>
           </div>
@@ -448,7 +456,7 @@ export default function ProfilePage() {
             />
 
             {deleteError && <p style={{ color: "crimson" }}>{deleteError}</p>}
-            <div style={{ display: "flex", gap: 12, marginTop: 16 }}>
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 12, marginTop: 16 }}>
               {/* Stays disabled until exactly "DELETE" (capital letters) is typed. */}
               <button
                 type="submit"

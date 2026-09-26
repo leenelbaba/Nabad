@@ -17,7 +17,7 @@ export default function ProfileHeader() {
             aria-label="Active profile"
             value={activeProfile.id}
             onChange={(e) => switchProfile(e.target.value)}
-            style={{ padding: 8, borderRadius: 8, border: `2px solid ${TEAL}`, color: TEAL }}
+            style={{ padding: 8, borderRadius: 8, border: `2px solid ${TEAL}`, color: TEAL, maxWidth: "100%" }}
           >
             <option value={selfProfile.id}>{selfProfile.fullName} (you)</option>
             {linkedProfiles.map((profile) => (

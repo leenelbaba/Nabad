@@ -1,3 +1,4 @@
+import Head from "next/head";
 import ProfileHeader from "../components/ProfileHeader";
 import { useActiveProfile } from "../context/ActiveProfileContext";
 
@@ -19,6 +20,9 @@ export default function DashboardPage() {
 
   return (
     <main style={{ maxWidth: 700, margin: "0 auto", padding: "20px 16px", fontFamily: "sans-serif", color: "#1f2937" }}>
+      <Head>
+        <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+      </Head>
       <ProfileHeader />
       {activeProfile && <h1>Welcome, {activeProfile.fullName}</h1>}
       {error && <p style={{ color: "crimson" }}>{error}</p>}
