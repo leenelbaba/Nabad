@@ -122,10 +122,14 @@ export async function removeLinkedProfile(id) {
   saveProfiles(profiles.filter((p) => p.id !== id));
 }
 
-// The mock cannot check a real password, so it only requires one to be entered.
+// The mock has no real accounts, so it accepts only the demo password "demo1234".
+// It checks the password before deleting, so a wrong password deletes nothing.
 export async function deleteAccount(password) {
   if (!password) {
     throw new Error("Password is required");
+  }
+  if (password !== "demo1234") {
+    throw new Error("Incorrect password");
   }
   localStorage.removeItem(STORAGE_KEY);
 }

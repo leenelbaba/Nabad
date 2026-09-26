@@ -1,4 +1,5 @@
 import Head from "next/head";
+import { useRouter } from "next/router";
 import Logo from "../components/Logo";
 
 const TEAL = "#0f766e";
@@ -51,6 +52,9 @@ const buttonStyle = {
 const outlineButtonStyle = { ...buttonStyle, background: "white", color: TEAL };
 
 export default function HomePage() {
+  // The profile page sends users to "/?deleted=1" after they delete their account.
+  const router = useRouter();
+
   return (
     <main style={{ fontFamily: "sans-serif", color: "#1f2937", background: "white" }}>
       <Head>
@@ -74,6 +78,17 @@ export default function HomePage() {
           <a href="/signup" style={buttonStyle}>Sign up</a>
         </div>
       </nav>
+
+      {router.query.deleted && (
+        <div style={{ maxWidth: 1000, margin: "0 auto", padding: "0 16px" }}>
+          <p
+            role="status"
+            style={{ margin: 0, padding: 12, borderRadius: 8, background: TEAL_LIGHT, color: TEAL, fontWeight: "bold", textAlign: "center" }}
+          >
+            Your account has been deleted.
+          </p>
+        </div>
+      )}
 
       <section
         style={{

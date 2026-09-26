@@ -1,11 +1,17 @@
 // Automated tests for the Nabad "My Profile" page.
 // These tests run automatically on every pull request.
 
-import { render, screen } from "@testing-library/react";
+import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import ProfilePage from "../pages/profile";
 import { ActiveProfileProvider } from "../context/ActiveProfileContext";
 import { getMyProfile, addLinkedProfile, listLinkedProfiles } from "../lib/profileApi";
+
+// A fake router, so tests can check where the page tries to go.
+const mockPush = jest.fn();
+jest.mock("next/router", () => ({
+  useRouter: () => ({ push: mockPush }),
+}));
 
 // The page reads linked profiles from the provider, just like in _app.js.
 function renderProfilePage() {
@@ -28,6 +34,7 @@ describe("Profile Page", () => {
   // Start every test with empty storage, so the demo user is seeded fresh.
   beforeEach(() => {
     localStorage.clear();
+    mockPush.mockClear();
   });
 
   test("shows the user's name and email", async () => {
@@ -220,6 +227,135 @@ describe("Profile Page", () => {
       expect(await screen.findByText("Child 10", { selector: "strong" })).toBeInTheDocument();
       expect(screen.getByText("You can link up to 10 dependents.")).toBeInTheDocument();
       expect(screen.getByRole("button", { name: "Add dependent" })).toBeDisabled();
+    });
+  });
+
+  describe("Removing a linked profile", () => {
+    // Adds a dependent called Maya, renders the page, and waits for her to appear.
+    async function renderWithMaya() {
+      const maya = await addLinkedProfile({ fullName: "Maya", dateOfBirth: "2015-03-10", relationship: "child" });
+      const user = userEvent.setup();
+      renderProfilePage();
+      await screen.findByText("Maya", { selector: "strong" });
+      return { user, maya };
+    }
+
+    test("removes the dependent after confirming", async () => {
+      const { user } = await renderWithMaya();
+
+      await user.click(screen.getByRole("button", { name: "Remove Maya" }));
+      const dialog = screen.getByRole("dialog");
+      expect(
+        within(dialog).getByText("Remove Maya's profile? This deletes all of their data and cannot be undone.")
+      ).toBeInTheDocument();
+      await user.click(within(dialog).getByRole("button", { name: "Remove" }));
+
+      expect(await screen.findByText("Maya's profile was removed.")).toBeInTheDocument();
+      expect(screen.queryByText("Maya", { selector: "strong" })).not.toBeInTheDocument();
+      expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+      expect(await listLinkedProfiles()).toEqual([]);
+    });
+
+    test("Cancel keeps the dependent", async () => {
+      const { user } = await renderWithMaya();
+
+      await user.click(screen.getByRole("button", { name: "Remove Maya" }));
+      await user.click(within(screen.getByRole("dialog")).getByRole("button", { name: "Cancel" }));
+
+      expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+      expect(screen.getByText("Maya", { selector: "strong" })).toBeInTheDocument();
+      expect((await listLinkedProfiles())[0].fullName).toBe("Maya");
+    });
+
+    test("the account owner's own profile has no Remove button", async () => {
+      await renderWithMaya();
+
+      // The only Remove button belongs to the dependent.
+      expect(screen.getAllByRole("button", { name: /^Remove/ })).toHaveLength(1);
+      expect(screen.queryByRole("button", { name: "Remove Demo User" })).not.toBeInTheDocument();
+    });
+
+    test("removing the active dependent switches back to your own profile", async () => {
+      const maya = await addLinkedProfile({ fullName: "Maya", dateOfBirth: "2015-03-10", relationship: "child" });
+      localStorage.setItem("nabad-active-profile-id", maya.id);
+      const user = userEvent.setup();
+      renderProfilePage();
+      expect(await screen.findByText("Acting as: Maya (child)")).toBeInTheDocument();
+
+      await user.click(screen.getByRole("button", { name: "Remove Maya" }));
+      await user.click(within(screen.getByRole("dialog")).getByRole("button", { name: "Remove" }));
+
+      await screen.findByText("Maya's profile was removed.");
+      expect(screen.queryByText(/Acting as/)).not.toBeInTheDocument();
+      expect(localStorage.getItem("nabad-active-profile-id")).toBe("self");
+    });
+  });
+
+  describe("Deleting the account", () => {
+    // Renders the page and opens the "Delete my account" dialog.
+    async function openDeleteDialog() {
+      const user = userEvent.setup();
+      renderProfilePage();
+      await user.click(await screen.findByRole("button", { name: "Delete my account" }));
+      const dialog = screen.getByRole("dialog");
+      const confirmButton = within(dialog).getByRole("button", { name: "Delete my account" });
+      return { user, dialog, confirmButton };
+    }
+
+    test("shows a danger zone that lists what will be deleted", async () => {
+      const { dialog } = await openDeleteDialog();
+
+      expect(screen.getByRole("heading", { name: "Danger zone" })).toBeInTheDocument();
+      expect(within(dialog).getByText("Your account")).toBeInTheDocument();
+      expect(within(dialog).getByText("Your profile")).toBeInTheDocument();
+      expect(within(dialog).getByText("All linked profiles")).toBeInTheDocument();
+      expect(within(dialog).getByText("Your emergency contacts")).toBeInTheDocument();
+    });
+
+    test("the delete button stays disabled until DELETE is typed exactly", async () => {
+      const { user, confirmButton } = await openDeleteDialog();
+      const confirmInput = screen.getByLabelText("Type DELETE to confirm");
+
+      await user.type(screen.getByLabelText("Password"), "demo1234");
+      expect(confirmButton).toBeDisabled();
+
+      await user.type(confirmInput, "delete");
+      expect(confirmButton).toBeDisabled();
+
+      await user.clear(confirmInput);
+      await user.type(confirmInput, "DELET");
+      expect(confirmButton).toBeDisabled();
+
+      await user.type(confirmInput, "E");
+      expect(confirmButton).toBeEnabled();
+    });
+
+    test("a wrong password shows an error and deletes nothing", async () => {
+      await addLinkedProfile({ fullName: "Maya", dateOfBirth: "2015-03-10", relationship: "child" });
+      const { user, confirmButton } = await openDeleteDialog();
+
+      await user.type(screen.getByLabelText("Password"), "wrong");
+      await user.type(screen.getByLabelText("Type DELETE to confirm"), "DELETE");
+      await user.click(confirmButton);
+
+      expect(await screen.findByText("Incorrect password")).toBeInTheDocument();
+      expect((await listLinkedProfiles())[0].fullName).toBe("Maya");
+      expect(mockPush).not.toHaveBeenCalled();
+    });
+
+    test("a successful deletion clears all data and goes to the landing page", async () => {
+      const maya = await addLinkedProfile({ fullName: "Maya", dateOfBirth: "2015-03-10", relationship: "child" });
+      localStorage.setItem("nabad-active-profile-id", maya.id);
+      const { user, confirmButton } = await openDeleteDialog();
+
+      await user.type(screen.getByLabelText("Password"), "demo1234");
+      await user.type(screen.getByLabelText("Type DELETE to confirm"), "DELETE");
+      await user.click(confirmButton);
+
+      expect(mockPush).toHaveBeenCalledWith("/?deleted=1");
+      expect(localStorage.getItem("nabad-profiles")).toBeNull();
+      expect(localStorage.getItem("nabad-active-profile-id")).toBeNull();
+      expect(screen.queryByText(/Acting as/)).not.toBeInTheDocument();
     });
   });
 });

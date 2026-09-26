@@ -1,16 +1,21 @@
 import { useEffect, useState } from "react";
+import { useRouter } from "next/router";
 import ProfileHeader from "../components/ProfileHeader";
+import Dialog from "../components/Dialog";
 import { useActiveProfile } from "../context/ActiveProfileContext";
 import {
   getMyProfile,
   updateMyProfile,
   addLinkedProfile,
+  removeLinkedProfile,
+  deleteAccount,
   RELATIONSHIPS,
   MAX_LINKED_PROFILES,
 } from "../lib/profileApi";
 import { todayString, calculateAge } from "../lib/dates";
 
 const TEAL = "#0f766e";
+const RED = "#b91c1c";
 
 const buttonStyle = {
   padding: "10px 20px",
@@ -23,6 +28,11 @@ const buttonStyle = {
 };
 
 const outlineButtonStyle = { ...buttonStyle, background: "white", color: TEAL };
+
+// Red buttons are used only for actions that delete data.
+const dangerButtonStyle = { ...buttonStyle, background: RED, border: `2px solid ${RED}` };
+
+const smallOutlineButtonStyle = { ...outlineButtonStyle, padding: "2px 10px", marginLeft: 8, fontSize: 14 };
 
 const inputStyle = { width: "100%", padding: 8, margin: "6px 0 4px", boxSizing: "border-box" };
 
@@ -85,13 +95,25 @@ export default function ProfilePage() {
   const [saveError, setSaveError] = useState("");
 
   // Linked profiles (dependents) come from the shared ActiveProfile context.
-  const { activeProfile, linkedProfiles, refreshProfiles } = useActiveProfile();
+  const { selfProfile, activeProfile, linkedProfiles, switchProfile, refreshProfiles, resetActiveProfile } =
+    useActiveProfile();
   const [isAddingDependent, setIsAddingDependent] = useState(false);
   const [dependentForm, setDependentForm] = useState(EMPTY_DEPENDENT);
   const [dependentErrors, setDependentErrors] = useState({});
   const [dependentError, setDependentError] = useState("");
   const [dependentMessage, setDependentMessage] = useState("");
   const reachedLimit = linkedProfiles.length >= MAX_LINKED_PROFILES;
+
+  // The dependent waiting for "Remove" to be confirmed, or null when no dialog is open.
+  const [profileToRemove, setProfileToRemove] = useState(null);
+  const [removeError, setRemoveError] = useState("");
+
+  // "Delete my account" dialog.
+  const router = useRouter();
+  const [isDeletingAccount, setIsDeletingAccount] = useState(false);
+  const [deletePassword, setDeletePassword] = useState("");
+  const [deleteConfirmText, setDeleteConfirmText] = useState("");
+  const [deleteError, setDeleteError] = useState("");
 
   // Load the profile once. .catch() makes sure a failed load shows a message
   // instead of "Loading..." forever.
@@ -172,6 +194,49 @@ export default function ProfilePage() {
     } catch (err) {
       // The API explains what went wrong, e.g. "You can link up to 10 dependents".
       setDependentError(err.message);
+    }
+  }
+
+  function askToRemove(dependent) {
+    setRemoveError("");
+    setDependentMessage("");
+    setProfileToRemove(dependent);
+  }
+
+  async function handleRemove() {
+    const removed = profileToRemove;
+    try {
+      await removeLinkedProfile(removed.id);
+      // If we were acting as this dependent, go back to the account owner's own profile.
+      if (activeProfile.id === removed.id) {
+        switchProfile(selfProfile.id);
+      }
+      await refreshProfiles();
+      setProfileToRemove(null);
+      setDependentMessage(`${removed.fullName}'s profile was removed.`);
+    } catch (err) {
+      setRemoveError(err.message);
+    }
+  }
+
+  function openDeleteAccount() {
+    setDeletePassword("");
+    setDeleteConfirmText("");
+    setDeleteError("");
+    setIsDeletingAccount(true);
+  }
+
+  async function handleDeleteAccount(e) {
+    e.preventDefault();
+    setDeleteError("");
+    try {
+      await deleteAccount(deletePassword);
+      resetActiveProfile();
+      // The landing page reads "?deleted=1" and shows a confirmation message.
+      router.push("/?deleted=1");
+    } catch (err) {
+      // e.g. "Incorrect password". Nothing was deleted.
+      setDeleteError(err.message);
     }
   }
 
@@ -260,6 +325,15 @@ export default function ProfilePage() {
             {linkedProfiles.map((dependent) => (
               <li key={dependent.id} style={{ marginBottom: 6 }}>
                 <strong>{dependent.fullName}</strong>, {dependent.relationship}, age {calculateAge(dependent.dateOfBirth)}
+                {/* The self profile is never in this list, so it can never be removed here. */}
+                <button
+                  type="button"
+                  onClick={() => askToRemove(dependent)}
+                  aria-label={`Remove ${dependent.fullName}`}
+                  style={smallOutlineButtonStyle}
+                >
+                  Remove
+                </button>
               </li>
             ))}
           </ul>
@@ -325,6 +399,71 @@ export default function ProfilePage() {
         <h2 style={{ marginTop: 0, color: TEAL }}>Emergency contact</h2>
         <p style={{ margin: 0, color: "#6b7280" }}>Coming soon.</p>
       </section>
+
+      <section style={{ border: `2px solid ${RED}`, borderRadius: 12, padding: 20, marginTop: 40 }}>
+        <h2 style={{ marginTop: 0, color: RED }}>Danger zone</h2>
+        <p style={{ color: "#6b7280" }}>Deleting your account is permanent and cannot be undone.</p>
+        <button type="button" onClick={openDeleteAccount} style={dangerButtonStyle}>Delete my account</button>
+      </section>
+
+      {profileToRemove && (
+        <Dialog title="Remove linked profile">
+          <p>
+            Remove {profileToRemove.fullName}'s profile? This deletes all of their data and cannot be undone.
+          </p>
+          {removeError && <p style={{ color: "crimson" }}>{removeError}</p>}
+          <div style={{ display: "flex", gap: 12, marginTop: 16 }}>
+            <button type="button" onClick={handleRemove} style={dangerButtonStyle}>Remove</button>
+            <button type="button" onClick={() => setProfileToRemove(null)} style={outlineButtonStyle}>Cancel</button>
+          </div>
+        </Dialog>
+      )}
+
+      {isDeletingAccount && (
+        <Dialog title="Delete your account?">
+          <p style={{ marginBottom: 4 }}>This permanently deletes:</p>
+          <ul style={{ marginTop: 0 }}>
+            <li>Your account</li>
+            <li>Your profile</li>
+            <li>All linked profiles</li>
+            <li>Your emergency contacts</li>
+          </ul>
+          <form onSubmit={handleDeleteAccount} noValidate>
+            <label htmlFor="deletePassword">Password</label>
+            <input
+              id="deletePassword"
+              type="password"
+              value={deletePassword}
+              onChange={(e) => setDeletePassword(e.target.value)}
+              style={inputStyle}
+            />
+
+            <label htmlFor="deleteConfirmText">Type DELETE to confirm</label>
+            <input
+              id="deleteConfirmText"
+              value={deleteConfirmText}
+              onChange={(e) => setDeleteConfirmText(e.target.value)}
+              autoComplete="off"
+              style={inputStyle}
+            />
+
+            {deleteError && <p style={{ color: "crimson" }}>{deleteError}</p>}
+            <div style={{ display: "flex", gap: 12, marginTop: 16 }}>
+              {/* Stays disabled until exactly "DELETE" (capital letters) is typed. */}
+              <button
+                type="submit"
+                disabled={deleteConfirmText !== "DELETE"}
+                style={{ ...dangerButtonStyle, opacity: deleteConfirmText === "DELETE" ? 1 : 0.5 }}
+              >
+                Delete my account
+              </button>
+              <button type="button" onClick={() => setIsDeletingAccount(false)} style={outlineButtonStyle}>
+                Cancel
+              </button>
+            </div>
+          </form>
+        </Dialog>
+      )}
 
       <p style={{ marginTop: 24 }}>
         <a href="/dashboard" style={{ color: TEAL }}>Back to dashboard</a>

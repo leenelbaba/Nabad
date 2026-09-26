@@ -97,7 +97,17 @@ describe("Profile API (mock)", () => {
 
     await expect(deleteAccount("")).rejects.toThrow("Password is required");
 
-    await deleteAccount("secret");
+    await deleteAccount("demo1234");
+    expect(localStorage.getItem("nabad-profiles")).toBeNull();
+    // Loading again starts over with a fresh demo user.
     expect((await getMyProfile()).fullName).toBe("Demo User");
+  });
+
+  test("deleteAccount rejects a wrong password and deletes nothing", async () => {
+    await addLinkedProfile({ fullName: "Sami", dateOfBirth: "2015-03-10", relationship: "child" });
+
+    await expect(deleteAccount("wrong")).rejects.toThrow("Incorrect password");
+
+    expect((await listLinkedProfiles())[0].fullName).toBe("Sami");
   });
 });

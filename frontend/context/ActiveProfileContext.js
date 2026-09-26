@@ -38,6 +38,15 @@ export function ActiveProfileProvider({ children }) {
     localStorage.setItem(ACTIVE_PROFILE_KEY, id);
   }
 
+  // Called after the account is deleted: forgets the saved choice and the loaded profiles.
+  // It does not reload the profiles, because that would save the demo user again.
+  function resetActiveProfile() {
+    localStorage.removeItem(ACTIVE_PROFILE_KEY);
+    setActiveProfileId("self");
+    setSelfProfile(null);
+    setLinkedProfiles([]);
+  }
+
   // If the saved id no longer matches a dependent (for example it was removed),
   // fall back to the account owner's own profile.
   const activeProfile =
@@ -49,6 +58,7 @@ export function ActiveProfileProvider({ children }) {
     activeProfile,
     switchProfile,
     refreshProfiles,
+    resetActiveProfile,
     error,
     loading: !selfProfile && !error,
   };
